@@ -1,0 +1,59 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: syj_voice
+      POSTGRES_USER: syj
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U syj -d syj_voice"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [private]
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}"]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [private]
+  api:
+    build: ../backend
+    environment:
+      SYJ_DATABASE_URL: postgresql+asyncpg://syj:${POSTGRES_PASSWORD}@postgres:5432/syj_voice
+      SYJ_JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      SYJ_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      SYJ_CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    ports: ["127.0.0.1:8000:8000"]
+    networks: [private]
+  web:
+    build: ../web
+    depends_on: [api]
+    ports: ["127.0.0.1:3000:3000"]
+    networks: [private]
+  asterisk:
+    image: andrius/asterisk:20
+    volumes:
+      - ../telephony/asterisk/pjsip.conf:/etc/asterisk/pjsip.conf:ro
+      - ../telephony/asterisk/extensions.conf:/etc/asterisk/extensions.conf:ro
+    networks: [private]
+  coturn:
+    image: coturn/coturn:4.6
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+    volumes:
+      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    networks: [private]
+networks:
+  private:
+    internal: true
+volumes:
+  postgres_data:
+  redis_data:
