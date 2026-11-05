@@ -16,5 +16,8 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
       - run: ruff check .
+        if: ${{ !cancelled() }}
       - run: mypy app
+        if: ${{ !cancelled() }}
       - run: pytest -q
+        if: ${{ !cancelled() }}
